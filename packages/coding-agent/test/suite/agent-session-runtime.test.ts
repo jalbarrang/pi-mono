@@ -233,6 +233,19 @@ describe("AgentSessionRuntime characterization", () => {
 		await expect(runtime.fork("missing-entry")).rejects.toThrow("Invalid entry ID for forking");
 	});
 
+	it("switches runtime to a different cwd via switchToCwdSession", async () => {
+		const firstDir = join(tmpdir(), `pi-runtime-ws-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const secondDir = join(tmpdir(), `pi-runtime-ws-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(firstDir, { recursive: true });
+		mkdirSync(secondDir, { recursive: true });
+		const { runtime } = await createRuntimeForTest(() => {}, { cwd: firstDir });
+
+		await runtime.switchToCwdSession(secondDir);
+
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(secondDir));
+		expect(realpathSync(process.cwd())).toBe(realpathSync(secondDir));
+	});
+
 	it("updates process.cwd() on cross-cwd session replacement", async () => {
 		const firstDir = join(tmpdir(), `pi-runtime-cwd-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const secondDir = join(tmpdir(), `pi-runtime-cwd-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);

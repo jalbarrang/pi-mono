@@ -39,6 +39,7 @@ import { SessionManager } from "./core/session-manager.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import { printTimings, resetTimings, time } from "./core/timings.js";
 import { allTools } from "./core/tools/index.js";
+import { createWorkspaceResourceLoaderOverrides, WorkspaceController } from "./core/workspaces.js";
 import { runMigrations, showDeprecationWarnings } from "./migrations.js";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.js";
 import { ExtensionSelectorComponent } from "./modes/interactive/components/extension-selector.js";
@@ -513,6 +514,7 @@ export async function main(args: string[]) {
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 	const authStorage = AuthStorage.create();
+	const workspaceController = new WorkspaceController();
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,
@@ -535,6 +537,7 @@ export async function main(args: string[]) {
 				noThemes: parsed.noThemes,
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
+				...createWorkspaceResourceLoaderOverrides(workspaceController),
 			},
 		});
 		const { settingsManager, modelRegistry, resourceLoader } = services;
@@ -694,6 +697,7 @@ export async function main(args: string[]) {
 			initialMessages: parsed.messages,
 			verbose: parsed.verbose,
 		});
+		interactiveMode.workspaceController = workspaceController;
 		if (startupBenchmark) {
 			await interactiveMode.init();
 			time("interactiveMode.init");
