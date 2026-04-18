@@ -3,6 +3,7 @@
 import { writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { MODELS as PREVIOUS_MODELS } from "../src/models.generated.js";
 import {
 	Api,
 	type AnthropicMessagesCompat,
@@ -71,6 +72,12 @@ const EAGER_TOOL_INPUT_STREAMING_UNSUPPORTED_ANTHROPIC_MODELS = new Set([
 	"github-copilot:claude-sonnet-4",
 	"github-copilot:claude-sonnet-4.5",
 ]);
+const FETCH_RETRY_ATTEMPTS = 4;
+const FETCH_TIMEOUT_MS = 15000;
+const FETCH_BASE_DELAY_MS = 500;
+const FETCH_MAX_JITTER_MS = 250;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_ERROR_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ECONNABORTED", "ENOTFOUND", "EAI_AGAIN", "ETIMEDOUT"]);
 
 function getAnthropicMessagesCompat(provider: string, modelId: string): AnthropicMessagesCompat | undefined {
 	return EAGER_TOOL_INPUT_STREAMING_UNSUPPORTED_ANTHROPIC_MODELS.has(`${provider}:${modelId}`)
@@ -84,15 +91,109 @@ function getBedrockBaseUrl(modelId: string): string {
 		: "https://bedrock-runtime.us-east-1.amazonaws.com";
 }
 
-async function fetchOpenRouterModels(): Promise<Model<any>[]> {
+interface ModelFetchResult {
+	models: Model<Api>[];
+	ok: boolean;
+}
+
+interface OpenRouterModel {
+	id: string;
+	name: string;
+	supported_parameters?: string[];
+	architecture?: {
+		modality?: string[];
+	};
+	pricing?: {
+		prompt?: string | number;
+		completion?: string | number;
+		input_cache_read?: string | number;
+		input_cache_write?: string | number;
+	};
+	context_length?: number;
+	top_provider?: {
+		max_completion_tokens?: number;
+	};
+}
+
+function flattenGeneratedModels(): Model<Api>[] {
+	const models: Model<Api>[] = [];
+	for (const providerModels of Object.values(PREVIOUS_MODELS)) {
+		for (const model of Object.values(providerModels)) {
+			models.push(model as Model<Api>);
+		}
+	}
+	return models;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryDelayMs(attempt: number): number {
+	const jitter = Math.floor(Math.random() * FETCH_MAX_JITTER_MS);
+	return FETCH_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1) + jitter;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+	if (!(error instanceof Error)) return undefined;
+	const errorWithCode = error as Error & { code?: unknown; cause?: unknown };
+	if (typeof errorWithCode.code === "string") {
+		return errorWithCode.code;
+	}
+	return getErrorCode(errorWithCode.cause);
+}
+
+function isRetryableError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	if (error.name === "AbortError" || error.name === "TimeoutError") {
+		return true;
+	}
+	const code = getErrorCode(error);
+	return code !== undefined && RETRYABLE_ERROR_CODES.has(code);
+}
+
+async function fetchJsonWithRetry<T>(label: string, url: string): Promise<T> {
+	for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt += 1) {
+		try {
+			const response = await fetch(url, {
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			});
+
+			if (!response.ok) {
+				const message = `${label} request failed with HTTP ${response.status} ${response.statusText}`;
+				if (RETRYABLE_STATUS_CODES.has(response.status) && attempt < FETCH_RETRY_ATTEMPTS) {
+					const delayMs = getRetryDelayMs(attempt);
+					console.warn(`${message}; retrying in ${delayMs}ms (${attempt}/${FETCH_RETRY_ATTEMPTS})`);
+					await sleep(delayMs);
+					continue;
+				}
+				throw new Error(message);
+			}
+
+			return (await response.json()) as T;
+		} catch (error) {
+			if (isRetryableError(error) && attempt < FETCH_RETRY_ATTEMPTS) {
+				const delayMs = getRetryDelayMs(attempt);
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn(`${label} request failed (${message}); retrying in ${delayMs}ms (${attempt}/${FETCH_RETRY_ATTEMPTS})`);
+				await sleep(delayMs);
+				continue;
+			}
+			throw error;
+		}
+	}
+
+	throw new Error(`${label} request exhausted retries`);
+}
+
+async function fetchOpenRouterModels(): Promise<ModelFetchResult> {
 	try {
 		console.log("Fetching models from OpenRouter API...");
-		const response = await fetch("https://openrouter.ai/api/v1/models");
-		const data = await response.json();
+		const data = await fetchJsonWithRetry<{ data?: OpenRouterModel[] }>("OpenRouter models", "https://openrouter.ai/api/v1/models");
 
-		const models: Model<any>[] = [];
+		const models: Model<Api>[] = [];
 
-		for (const model of data.data) {
+		for (const model of data.data ?? []) {
 			// Only include models that support tools
 			if (!model.supported_parameters?.includes("tools")) continue;
 
@@ -135,19 +236,21 @@ async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 		}
 
 		console.log(`Fetched ${models.length} tool-capable models from OpenRouter`);
-		return models;
+		return { models, ok: true };
 	} catch (error) {
 		console.error("Failed to fetch OpenRouter models:", error);
-		return [];
+		return { models: [], ok: false };
 	}
 }
 
-async function fetchAiGatewayModels(): Promise<Model<any>[]> {
+async function fetchAiGatewayModels(): Promise<ModelFetchResult> {
 	try {
 		console.log("Fetching models from Vercel AI Gateway API...");
-		const response = await fetch(`${AI_GATEWAY_MODELS_URL}/models`);
-		const data = await response.json();
-		const models: Model<any>[] = [];
+		const data = await fetchJsonWithRetry<{ data?: AiGatewayModel[] }>(
+			"Vercel AI Gateway models",
+			`${AI_GATEWAY_MODELS_URL}/models`,
+		);
+		const models: Model<Api>[] = [];
 
 		const toNumber = (value: string | number | undefined): number => {
 			if (typeof value === "number") {
@@ -193,20 +296,22 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 		}
 
 		console.log(`Fetched ${models.length} tool-capable models from Vercel AI Gateway`);
-		return models;
+		return { models, ok: true };
 	} catch (error) {
 		console.error("Failed to fetch Vercel AI Gateway models:", error);
-		return [];
+		return { models: [], ok: false };
 	}
 }
 
-async function loadModelsDevData(): Promise<Model<any>[]> {
+async function loadModelsDevData(): Promise<ModelFetchResult> {
 	try {
 		console.log("Fetching models from models.dev API...");
-		const response = await fetch("https://models.dev/api.json");
-		const data = await response.json();
+		const data = await fetchJsonWithRetry<Record<string, { models?: Record<string, unknown> }>>(
+			"models.dev catalog",
+			"https://models.dev/api.json",
+		);
 
-		const models: Model<any>[] = [];
+		const models: Model<Api>[] = [];
 
 		// Process Amazon Bedrock models
 		if (data["amazon-bedrock"]?.models) {
@@ -706,10 +811,10 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		}
 
 		console.log(`Loaded ${models.length} tool-capable models from models.dev`);
-		return models;
+		return { models, ok: true };
 	} catch (error) {
 		console.error("Failed to load models.dev data:", error);
-		return [];
+		return { models: [], ok: false };
 	}
 }
 
@@ -718,12 +823,12 @@ async function generateModels() {
 	// models.dev: Anthropic, Google, OpenAI, Groq, Cerebras
 	// OpenRouter: xAI and other providers (excluding Anthropic, Google, OpenAI)
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
-	const modelsDevModels = await loadModelsDevData();
-	const openRouterModels = await fetchOpenRouterModels();
-	const aiGatewayModels = await fetchAiGatewayModels();
+	const modelsDevResult = await loadModelsDevData();
+	const openRouterResult = await fetchOpenRouterModels();
+	const aiGatewayResult = await fetchAiGatewayModels();
 
 	// Combine models (models.dev has priority)
-	const allModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels].filter(
+	const allModels = [...modelsDevResult.models, ...openRouterResult.models, ...aiGatewayResult.models].filter(
 		(model) =>
 			!((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "gpt-5.3-codex-spark"),
 	);
@@ -1637,6 +1742,21 @@ async function generateModels() {
 			baseUrl: "",
 		}));
 	allModels.push(...azureOpenAiModels);
+
+	if (!modelsDevResult.ok || !openRouterResult.ok || !aiGatewayResult.ok) {
+		const existingModelKeys = new Set(allModels.map((model) => `${model.provider}:${model.id}`));
+		let restoredCount = 0;
+
+		for (const model of flattenGeneratedModels()) {
+			const key = `${model.provider}:${model.id}`;
+			if (existingModelKeys.has(key)) continue;
+			allModels.push({ ...model });
+			existingModelKeys.add(key);
+			restoredCount += 1;
+		}
+
+		console.log(`Restored ${restoredCount} models from existing src/models.generated.ts fallback`);
+	}
 
 	// Group by provider and deduplicate by model ID
 	const providers: Record<string, Record<string, Model<any>>> = {};
