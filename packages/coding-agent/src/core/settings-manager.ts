@@ -67,6 +67,7 @@ export type PackageSource =
 			skills?: string[];
 			prompts?: string[];
 			themes?: string[];
+			agents?: string[];
 	  };
 
 export interface Settings {
@@ -93,6 +94,7 @@ export interface Settings {
 	skills?: string[]; // Array of local skill file paths or directories
 	prompts?: string[]; // Array of local prompt template paths or directories
 	themes?: string[]; // Array of local theme file paths or directories
+	agents?: string[]; // Array of local subagent file paths or directories
 	enableSkillCommands?: boolean; // default: true - register skills as /skill:name commands
 	terminal?: TerminalSettings;
 	images?: ImageSettings;
@@ -881,6 +883,23 @@ export class SettingsManager {
 		const projectSettings = structuredClone(this.projectSettings);
 		projectSettings.themes = paths;
 		this.markProjectModified("themes");
+		this.saveProjectSettings(projectSettings);
+	}
+
+	getAgentPaths(): string[] {
+		return [...(this.settings.agents ?? [])];
+	}
+
+	setAgentPaths(paths: string[]): void {
+		this.globalSettings.agents = paths;
+		this.markModified("agents");
+		this.save();
+	}
+
+	setProjectAgentPaths(paths: string[]): void {
+		const projectSettings = structuredClone(this.projectSettings);
+		projectSettings.agents = paths;
+		this.markProjectModified("agents");
 		this.saveProjectSettings(projectSettings);
 	}
 

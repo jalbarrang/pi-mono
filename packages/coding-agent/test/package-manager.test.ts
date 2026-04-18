@@ -82,6 +82,7 @@ describe("DefaultPackageManager", () => {
 			expect(result.extensions).toEqual([]);
 			expect(result.prompts).toEqual([]);
 			expect(result.themes).toEqual([]);
+			expect(result.agents).toEqual([]);
 			expect(result.skills.every((r) => r.metadata.source === "auto" && r.metadata.origin === "top-level")).toBe(
 				true,
 			);
@@ -116,6 +117,18 @@ Content`,
 			const result = await packageManager.resolve();
 			// Skills with SKILL.md are returned as file paths
 			expect(result.skills.some((r) => r.path === skillFile && r.enabled)).toBe(true);
+		});
+
+		it("should resolve agent paths from settings", async () => {
+			const agentsDir = join(agentDir, "agents");
+			mkdirSync(agentsDir, { recursive: true });
+			const agentPath = join(agentsDir, "reviewer.md");
+			writeFileSync(agentPath, "---\nname: reviewer\ndescription: Reviewer\n---\nReview carefully.");
+
+			settingsManager.setAgentPaths(["agents"]);
+
+			const result = await packageManager.resolve();
+			expect(result.agents.some((r) => r.path === agentPath && r.enabled)).toBe(true);
 		});
 
 		it("should auto-discover root markdown skills from .pi skill dirs", async () => {
@@ -943,6 +956,39 @@ Content`,
 	});
 
 	describe("pattern filtering in pi manifest", () => {
+		it("should support manifest agents", async () => {
+			const pkgDir = join(tempDir, "agents-manifest-pkg");
+			mkdirSync(join(pkgDir, "agents"), { recursive: true });
+			writeFileSync(
+				join(pkgDir, "agents", "reviewer.md"),
+				"---\nname: reviewer\ndescription: Reviewer\n---\nUse rg first.",
+			);
+			writeFileSync(
+				join(pkgDir, "package.json"),
+				JSON.stringify({
+					name: "agents-manifest-pkg",
+					pi: {
+						agents: ["./agents"],
+					},
+				}),
+			);
+
+			const result = await packageManager.resolveExtensionSources([pkgDir]);
+			expect(result.agents.some((r) => isEnabled(r, "reviewer.md"))).toBe(true);
+		});
+
+		it("should auto-discover conventional agents directories", async () => {
+			const pkgDir = join(tempDir, "agents-convention-pkg");
+			mkdirSync(join(pkgDir, "agents"), { recursive: true });
+			writeFileSync(
+				join(pkgDir, "agents", "frontend.md"),
+				"---\nname: frontend\ndescription: Frontend\n---\nPrefer keyboard-first UI.",
+			);
+
+			const result = await packageManager.resolveExtensionSources([pkgDir]);
+			expect(result.agents.some((r) => isEnabled(r, "frontend.md"))).toBe(true);
+		});
+
 		it("should support glob patterns in manifest extensions", async () => {
 			const pkgDir = join(tempDir, "manifest-pkg");
 			mkdirSync(join(pkgDir, "extensions"), { recursive: true });

@@ -167,7 +167,7 @@ When multiple sources specify a session directory, `--session-dir` CLI flag take
 
 ### Resources
 
-These settings define where to load extensions, skills, prompts, and themes from.
+These settings define where to load extensions, skills, prompts, themes, and agents from.
 
 Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in `.pi/settings.json` resolve relative to `.pi`. Absolute paths and `~` are supported.
 
@@ -178,6 +178,7 @@ Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in
 | `skills` | string[] | `[]` | Local skill file paths or directories |
 | `prompts` | string[] | `[]` | Local prompt template paths or directories |
 | `themes` | string[] | `[]` | Local theme file paths or directories |
+| `agents` | string[] | `[]` | Local agent file paths or directories |
 | `enableSkillCommands` | boolean | `true` | Register skills as `/skill:name` commands |
 
 Arrays support glob patterns and exclusions. Use `!pattern` to exclude. Use `+path` to force-include an exact path and `-path` to force-exclude an exact path.
@@ -200,7 +201,8 @@ Object form filters which resources to load:
     {
       "source": "pi-skills",
       "skills": ["brave-search", "transcribe"],
-      "extensions": []
+      "extensions": [],
+      "agents": ["agents/reviewer.md"]
     }
   ]
 }
