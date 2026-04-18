@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added package and settings support for `agents`, so pi packages can ship agent definitions via `pi.agents` or conventional `agents/` directories and toggle them in `pi config`.
+
 ## [0.67.68] - 2026-04-17
 
 ## [0.67.67] - 2026-04-17
