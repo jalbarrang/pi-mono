@@ -40,6 +40,7 @@ import { SessionManager } from "./core/session-manager.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import { printTimings, resetTimings, time } from "./core/timings.js";
 import { allTools } from "./core/tools/index.js";
+import { createWorkspaceResourceLoaderOverrides, WorkspaceController } from "./core/workspaces.js";
 import { runMigrations, showDeprecationWarnings } from "./migrations.js";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.js";
 import { ExtensionSelectorComponent } from "./modes/interactive/components/extension-selector.js";
@@ -518,6 +519,7 @@ export async function main(args: string[], options?: MainOptions) {
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 	const authStorage = AuthStorage.create();
+	const workspaceController = new WorkspaceController();
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,
@@ -542,6 +544,9 @@ export async function main(args: string[], options?: MainOptions) {
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
 				extensionFactories: options?.extensionFactories,
+				...createWorkspaceResourceLoaderOverrides(workspaceController, {
+					includeContextFiles: !parsed.noContextFiles,
+				}),
 			},
 		});
 		const { settingsManager, modelRegistry, resourceLoader } = services;
@@ -590,6 +595,7 @@ export async function main(args: string[], options?: MainOptions) {
 			scopedModels: sessionOptions.scopedModels,
 			tools: sessionOptions.tools,
 			customTools: sessionOptions.customTools,
+			workspaceController,
 		});
 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
 		if (created.session.model && cliThinkingOverride) {
@@ -701,6 +707,7 @@ export async function main(args: string[], options?: MainOptions) {
 			initialMessages: parsed.messages,
 			verbose: parsed.verbose,
 		});
+		interactiveMode.workspaceController = workspaceController;
 		if (startupBenchmark) {
 			await interactiveMode.init();
 			time("interactiveMode.init");

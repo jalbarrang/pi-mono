@@ -6,7 +6,8 @@ import type { SessionStartEvent } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import type { CreateAgentSessionResult } from "./sdk.js";
 import { assertSessionCwdExists } from "./session-cwd.js";
-import { SessionManager } from "./session-manager.js";
+import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
+import { SettingsManager } from "./settings-manager.js";
 
 /**
  * Result returned by runtime creation.
@@ -147,6 +148,23 @@ export class AgentSessionRuntime {
 		const previousSessionFile = this.session.sessionFile;
 		const sessionManager = SessionManager.open(sessionPath, undefined, cwdOverride);
 		assertSessionCwdExists(sessionManager, this.cwd);
+		await this.teardownCurrent();
+		this.apply(
+			await this.createRuntime({
+				cwd: sessionManager.getCwd(),
+				agentDir: this.services.agentDir,
+				sessionManager,
+				sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
+			}),
+		);
+		return { cancelled: false };
+	}
+
+	async switchToCwdSession(cwd: string): Promise<{ cancelled: boolean }> {
+		const previousSessionFile = this.session.sessionFile;
+		const settingsManager = SettingsManager.create(cwd, this.services.agentDir);
+		const sessionDir = settingsManager.getSessionDir() ?? getDefaultSessionDir(cwd, this.services.agentDir);
+		const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
 		await this.teardownCurrent();
 		this.apply(
 			await this.createRuntime({

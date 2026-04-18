@@ -38,6 +38,7 @@ import {
 	withFileMutationQueue,
 	writeTool,
 } from "./tools/index.js";
+import type { WorkspaceController } from "./workspaces.js";
 
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: process.cwd() */
@@ -64,6 +65,9 @@ export interface CreateAgentSessionOptions {
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
 	resourceLoader?: ResourceLoader;
+
+	/** Active workspace controller used to route built-in file tools across workspace folders. */
+	workspaceController?: WorkspaceController;
 
 	/** Session manager. Default: SessionManager.create(cwd) */
 	sessionManager?: SessionManager;
@@ -360,6 +364,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		scopedModels: options.scopedModels,
 		resourceLoader,
 		customTools: options.customTools,
+		workspaceController: options.workspaceController,
 		modelRegistry,
 		initialActiveToolNames,
 		extensionRunnerRef,

@@ -78,8 +78,10 @@ import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
-import { createAllToolDefinitions } from "./tools/index.js";
+import { createAllToolDefinitions, type ToolName } from "./tools/index.js";
 import { createToolDefinitionFromAgentTool, wrapToolDefinition } from "./tools/tool-definition-wrapper.js";
+import { createWorkspaceAwareToolDefinition } from "./tools/workspace-router.js";
+import type { WorkspaceController } from "./workspaces.js";
 
 // ============================================================================
 // Skill Block Parsing
@@ -146,6 +148,8 @@ export interface AgentSessionConfig {
 	resourceLoader: ResourceLoader;
 	/** SDK custom tools registered outside extensions */
 	customTools?: ToolDefinition[];
+	/** Active workspace controller used to route built-in file tools across workspace folders. */
+	workspaceController?: WorkspaceController;
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
 	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
@@ -276,6 +280,7 @@ export class AgentSession {
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	private _cwd: string;
+	private _workspaceController?: WorkspaceController;
 	private _extensionRunnerRef?: { current?: ExtensionRunner };
 	private _initialActiveToolNames?: string[];
 	private _baseToolsOverride?: Record<string, AgentTool>;
@@ -306,6 +311,7 @@ export class AgentSession {
 		this._resourceLoader = config.resourceLoader;
 		this._customTools = config.customTools ?? [];
 		this._cwd = config.cwd;
+		this._workspaceController = config.workspaceController;
 		this._modelRegistry = config.modelRegistry;
 		this._extensionRunnerRef = config.extensionRunnerRef;
 		this._initialActiveToolNames = config.initialActiveToolNames;
@@ -2324,8 +2330,26 @@ export class AgentSession {
 					bash: { commandPrefix: shellCommandPrefix },
 				});
 
+		const workspaceAwareBaseToolDefinitions =
+			this._workspaceController && !this._baseToolsOverride
+				? Object.fromEntries(
+						Object.entries(baseToolDefinitions).map(([name, definition]) => [
+							name,
+							createWorkspaceAwareToolDefinition({
+								definition: definition as ToolDefinition,
+								createDefinitionForCwd: (cwd) =>
+									createAllToolDefinitions(cwd, {
+										read: { autoResizeImages },
+										bash: { commandPrefix: shellCommandPrefix },
+									})[name as ToolName],
+								workspaceController: this._workspaceController!,
+							}),
+						]),
+					)
+				: baseToolDefinitions;
+
 		this._baseToolDefinitions = new Map(
-			Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
+			Object.entries(workspaceAwareBaseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
 		);
 
 		const extensionsResult = this._resourceLoader.getExtensions();
