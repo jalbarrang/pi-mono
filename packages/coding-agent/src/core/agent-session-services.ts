@@ -9,6 +9,7 @@ import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type Resource
 import { type CreateAgentSessionOptions, type CreateAgentSessionResult, createAgentSession } from "./sdk.js";
 import type { SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
+import type { WorkspaceController } from "./workspaces.js";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -55,6 +56,7 @@ export interface CreateAgentSessionFromServicesOptions {
 	tools?: string[];
 	noTools?: CreateAgentSessionOptions["noTools"];
 	customTools?: ToolDefinition[];
+	workspaceController?: WorkspaceController;
 }
 
 /**
@@ -193,6 +195,7 @@ export async function createAgentSessionFromServices(
 		tools: options.tools,
 		noTools: options.noTools,
 		customTools: options.customTools,
+		workspaceController: options.workspaceController,
 		sessionStartEvent: options.sessionStartEvent,
 	});
 }

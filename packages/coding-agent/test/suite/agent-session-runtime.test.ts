@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, registerFauxProvider } from "@mariozechner/pi-ai";
@@ -28,11 +28,13 @@ type RecordedSessionEvent =
 
 describe("AgentSessionRuntime characterization", () => {
 	const cleanups: Array<() => Promise<void> | void> = [];
+	const originalCwd = process.cwd();
 
 	afterEach(async () => {
 		while (cleanups.length > 0) {
 			await cleanups.pop()?.();
 		}
+		process.chdir(originalCwd);
 	});
 
 	async function createRuntimeForTest(
@@ -404,7 +406,33 @@ describe("AgentSessionRuntime characterization", () => {
 		await expect(runtime.fork("missing-entry")).rejects.toThrow("Invalid entry ID for forking");
 	});
 
-	it("updates the runtime session cwd on cross-cwd session replacement", async () => {
+	it("switches runtime to a different cwd via switchToCwdSession using the target cwd sessionDir setting", async () => {
+		const firstDir = join(tmpdir(), `pi-runtime-ws-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const secondDir = join(tmpdir(), `pi-runtime-ws-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const customSessionDir = join(secondDir, ".sessions");
+		mkdirSync(firstDir, { recursive: true });
+		mkdirSync(join(secondDir, ".pi"), { recursive: true });
+		writeFileSync(
+			join(secondDir, ".pi", "settings.json"),
+			`${JSON.stringify({ sessionDir: customSessionDir }, null, 2)}\n`,
+		);
+		const seededSession = SessionManager.create(secondDir, customSessionDir);
+		seededSession.appendMessage({ role: "user", content: [{ type: "text", text: "seed" }], timestamp: Date.now() });
+		cleanups.push(() => {
+			if (existsSync(secondDir)) {
+				rmSync(secondDir, { recursive: true, force: true });
+			}
+		});
+		const { runtime } = await createRuntimeForTest(() => {}, { cwd: firstDir });
+
+		await runtime.switchToCwdSession(secondDir);
+
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(secondDir));
+		expect(realpathSync(runtime.session.sessionManager.getSessionDir())).toBe(realpathSync(customSessionDir));
+		expect(realpathSync(process.cwd())).toBe(realpathSync(secondDir));
+	});
+
+	it("updates process.cwd() on cross-cwd session replacement", async () => {
 		const firstDir = join(tmpdir(), `pi-runtime-cwd-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const secondDir = join(tmpdir(), `pi-runtime-cwd-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(firstDir, { recursive: true });
