@@ -257,6 +257,11 @@ export function getSessionsDir(): string {
 	return join(getAgentDir(), "sessions");
 }
 
+/** Get path to saved workspaces directory (~/.pi/workspaces by default) */
+export function getWorkspacesDir(): string {
+	return join(dirname(getAgentDir()), "workspaces");
+}
+
 /** Get path to debug log file */
 export function getDebugLogPath(): string {
 	return join(getAgentDir(), `${APP_NAME}-debug.log`);

@@ -24,17 +24,24 @@ packages/*/dist-firefox/
 .npm/
 coverage/
 .nyc_output/
-.pi_config/
 tui-debug.log
 compaction-results/
-.opencode/
 syntax.jsonl
 out.jsonl
 pi-*.html
 out.html
 packages/coding-agent/binaries/
 todo.md
-plans/
+collect.sh
+
+# Agent files
+.opencode/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
-collect.sh
+.pi_config/
+
+# Agent planning files
+.plans/
+.handoff/
+.issues/
+plans/

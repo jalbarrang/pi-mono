@@ -6,7 +6,8 @@ import type { ReplacedSessionContext, SessionShutdownEvent, SessionStartEvent } 
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import type { CreateAgentSessionResult } from "./sdk.js";
 import { assertSessionCwdExists } from "./session-cwd.js";
-import { SessionManager } from "./session-manager.js";
+import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
+import { SettingsManager } from "./settings-manager.js";
 
 /**
  * Result returned by runtime creation.
@@ -163,7 +164,14 @@ export class AgentSessionRuntime {
 		this._modelFallbackMessage = result.modelFallbackMessage;
 	}
 
+	private syncProcessCwd(): void {
+		if (process.cwd() !== this._services.cwd) {
+			process.chdir(this._services.cwd);
+		}
+	}
+
 	private async finishSessionReplacement(withSession?: (ctx: ReplacedSessionContext) => Promise<void>): Promise<void> {
+		this.syncProcessCwd();
 		if (this.rebindSession) {
 			await this.rebindSession(this.session);
 		}
@@ -194,6 +202,31 @@ export class AgentSessionRuntime {
 			}),
 		);
 		await this.finishSessionReplacement(options?.withSession);
+		return { cancelled: false };
+	}
+
+	async switchToCwdSession(cwd: string): Promise<{ cancelled: boolean }> {
+		const settingsManager = SettingsManager.create(cwd, this.services.agentDir);
+		const sessionDir = settingsManager.getSessionDir() ?? getDefaultSessionDir(cwd, this.services.agentDir);
+		const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
+		assertSessionCwdExists(sessionManager, cwd);
+
+		const beforeResult = await this.emitBeforeSwitch("resume", sessionManager.getSessionFile());
+		if (beforeResult.cancelled) {
+			return beforeResult;
+		}
+
+		const previousSessionFile = this.session.sessionFile;
+		await this.teardownCurrent("resume", sessionManager.getSessionFile());
+		this.apply(
+			await this.createRuntime({
+				cwd: sessionManager.getCwd(),
+				agentDir: this.services.agentDir,
+				sessionManager,
+				sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
+			}),
+		);
+		await this.finishSessionReplacement();
 		return { cancelled: false };
 	}
 

@@ -80,6 +80,7 @@ import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
 import type { SourceInfo } from "../../core/source-info.js";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
 import type { TruncationResult } from "../../core/tools/truncate.js";
+import { formatWorkspaceStatusLine, type WorkspaceController } from "../../core/workspaces.js";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.js";
@@ -292,6 +293,9 @@ export class InteractiveMode {
 
 	// Skill commands: command name -> skill file path
 	private skillCommands = new Map<string, string>();
+
+	// Workspace controller (set externally before run() or left undefined)
+	workspaceController?: WorkspaceController;
 
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
@@ -2560,6 +2564,11 @@ export class InteractiveMode {
 			if (text === "/resume") {
 				this.showSessionSelector();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/workspace" || text.startsWith("/workspace ")) {
+				this.editor.setText("");
+				await this.handleWorkspaceCommand(text);
 				return;
 			}
 			if (text === "/quit") {
@@ -5406,6 +5415,158 @@ export class InteractiveMode {
 		} catch {
 			// Ignore, will be emitted as an event
 		}
+	}
+
+	private async handleWorkspaceCommand(text: string): Promise<void> {
+		const args = text.replace(/^\/workspace\s*/, "").trim();
+		const parts = args.split(/\s+/);
+		const subcommand = parts[0] ?? "";
+
+		switch (subcommand) {
+			case "list": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				const workspaces = this.workspaceController.list();
+				if (workspaces.length === 0) {
+					this.showStatus("No saved workspaces.");
+				} else {
+					const lines = workspaces.map((ws) => `  ${ws.name}`);
+					this.chatContainer.addChild(new Spacer(1));
+					this.chatContainer.addChild(new Text(`${theme.bold("Workspaces")}\n${lines.join("\n")}`, 1, 0));
+					this.ui.requestRender();
+				}
+				return;
+			}
+			case "new": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				const name = parts[1];
+				if (!name) {
+					this.showWarning("Usage: /workspace new <name>");
+					return;
+				}
+				try {
+					const active = this.workspaceController.create(name, this.sessionManager.getCwd());
+					this.updateWorkspaceStatus();
+					this.showStatus(`Workspace created: ${active.name}`);
+				} catch (error) {
+					this.showError(error instanceof Error ? error.message : String(error));
+				}
+				return;
+			}
+			case "load": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				const loadName = parts[1];
+				try {
+					if (loadName) {
+						const active = this.workspaceController.load(loadName, this.sessionManager.getCwd());
+						await this.applyWorkspaceChange(active.primaryFolder.path);
+						this.showStatus(`Workspace loaded: ${active.name}`);
+					} else {
+						const matches = this.workspaceController.findContaining(this.sessionManager.getCwd());
+						if (matches.length === 0) {
+							this.showWarning("No workspace contains the current directory. Use /workspace load <name>.");
+						} else if (matches.length === 1) {
+							const active = this.workspaceController.load(matches[0].name, this.sessionManager.getCwd());
+							await this.applyWorkspaceChange(active.primaryFolder.path);
+							this.showStatus(`Workspace loaded: ${active.name}`);
+						} else {
+							const names = matches.map((ws) => ws.name).join(", ");
+							this.showWarning(
+								`Multiple workspaces contain this directory: ${names}. Use /workspace load <name>.`,
+							);
+						}
+					}
+				} catch (error) {
+					this.showError(error instanceof Error ? error.message : String(error));
+				}
+				return;
+			}
+			case "add-folder": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				const folderPath = parts[1];
+				if (!folderPath) {
+					this.showWarning("Usage: /workspace add-folder <path>");
+					return;
+				}
+				try {
+					this.workspaceController.addFolder(folderPath);
+					await this.session.reload();
+					this.updateWorkspaceStatus();
+					this.showStatus(`Folder added: ${folderPath}`);
+				} catch (error) {
+					this.showError(error instanceof Error ? error.message : String(error));
+				}
+				return;
+			}
+			case "remove-folder": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				const folderBasename = parts[1];
+				if (!folderBasename) {
+					this.showWarning("Usage: /workspace remove-folder <basename>");
+					return;
+				}
+				try {
+					this.workspaceController.removeFolder(folderBasename);
+					await this.session.reload();
+					this.updateWorkspaceStatus();
+					this.showStatus(`Folder removed: ${folderBasename}`);
+				} catch (error) {
+					this.showError(error instanceof Error ? error.message : String(error));
+				}
+				return;
+			}
+			case "close": {
+				if (!this.workspaceController) {
+					this.showWarning("Workspace support is not available.");
+					return;
+				}
+				this.workspaceController.close();
+				this.updateWorkspaceStatus();
+				await this.session.reload();
+				this.showStatus("Workspace closed.");
+				return;
+			}
+			default: {
+				this.showWarning("Usage: /workspace <new|load|list|add-folder|remove-folder|close>");
+				return;
+			}
+		}
+	}
+
+	private updateWorkspaceStatus(): void {
+		const active = this.workspaceController?.getActive();
+		if (active) {
+			this.footerDataProvider.setExtensionStatus("workspace", formatWorkspaceStatusLine(active));
+		} else {
+			this.footerDataProvider.setExtensionStatus("workspace", undefined);
+		}
+		this.footer.invalidate();
+		this.ui.requestRender();
+	}
+
+	private async applyWorkspaceChange(primaryPath: string): Promise<void> {
+		const currentCwd = this.sessionManager.getCwd();
+		if (primaryPath !== currentCwd) {
+			await this.runtimeHost.switchToCwdSession(primaryPath);
+			this.renderCurrentSessionState();
+		} else {
+			await this.session.reload();
+		}
+		this.updateWorkspaceStatus();
 	}
 
 	stop(): void {
