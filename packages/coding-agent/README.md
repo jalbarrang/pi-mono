@@ -18,7 +18,7 @@
 
 ---
 
-Pi is a minimal terminal coding harness. Adapt pi to your workflows, not the other way around, without having to fork and modify pi internals. Extend it with TypeScript [Extensions](#extensions), [Skills](#skills), [Prompt Templates](#prompt-templates), and [Themes](#themes). Put your extensions, skills, prompt templates, and themes in [Pi Packages](#pi-packages) and share them with others via npm or git.
+Pi is a minimal terminal coding harness. Adapt pi to your workflows, not the other way around, without having to fork and modify pi internals. Extend it with TypeScript [Extensions](#extensions), [Skills](#skills), [Prompt Templates](#prompt-templates), and [Themes](#themes). Put your extensions, skills, prompt templates, themes, and agents in [Pi Packages](#pi-packages) and share them with others via npm or git.
 
 Pi ships with powerful defaults but skips features like sub agents and plan mode. Instead, you can ask pi to build what you want or install a third party pi package that matches your workflow.
 
@@ -364,7 +364,7 @@ Place in `~/.pi/agent/themes/`, `.pi/themes/`, or a [pi package](#pi-packages) t
 
 ### Pi Packages
 
-Bundle and share extensions, skills, prompts, and themes via npm or git. Find packages on [npmjs.com](https://www.npmjs.com/search?q=keywords%3Api-package) or [Discord](https://discord.com/channels/1456806362351669492/1457744485428629628).
+Bundle and share extensions, skills, prompts, themes, and agents via npm or git. Find packages on [npmjs.com](https://www.npmjs.com/search?q=keywords%3Api-package) or [Discord](https://discord.com/channels/1456806362351669492/1457744485428629628).
 
 > **Security:** Pi packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
 
@@ -387,7 +387,7 @@ pi update --extensions                  # update packages only
 pi update --self                        # update pi only
 pi update --self --force                # reinstall pi even if current
 pi update npm:@foo/pi-tools             # update one package
-pi config                               # enable/disable extensions, skills, prompts, themes
+pi config                               # enable/disable extensions, skills, prompts, themes, agents
 ```
 
 Packages install to `~/.pi/agent/git/` (git) or global npm. Use `-l` for project-local installs (`.pi/git/`, `.pi/npm/`). Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
@@ -402,12 +402,13 @@ Create a package by adding a `pi` key to `package.json`:
     "extensions": ["./extensions"],
     "skills": ["./skills"],
     "prompts": ["./prompts"],
-    "themes": ["./themes"]
+    "themes": ["./themes"],
+    "agents": ["./agents"]
   }
 }
 ```
 
-Without a `pi` manifest, pi auto-discovers from conventional directories (`extensions/`, `skills/`, `prompts/`, `themes/`).
+Without a `pi` manifest, pi auto-discovers from conventional directories (`extensions/`, `skills/`, `prompts/`, `themes/`, `agents/`).
 
 See [docs/packages.md](docs/packages.md).
 

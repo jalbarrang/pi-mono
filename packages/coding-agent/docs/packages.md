@@ -2,7 +2,7 @@
 
 # Pi Packages
 
-Pi packages bundle extensions, skills, prompt templates, and themes so you can share them through npm or git. A package can declare resources in `package.json` under the `pi` key, or use conventional directories.
+Pi packages bundle extensions, skills, prompt templates, themes, and agents so you can share them through npm or git. A package can declare resources in `package.json` under the `pi` key, or use conventional directories.
 
 ## Table of Contents
 
@@ -120,7 +120,8 @@ Add a `pi` manifest to `package.json` or use conventional directories. Include t
     "extensions": ["./extensions"],
     "skills": ["./skills"],
     "prompts": ["./prompts"],
-    "themes": ["./themes"]
+    "themes": ["./themes"],
+    "agents": ["./agents"]
   }
 }
 ```
@@ -158,6 +159,7 @@ If no `pi` manifest is present, pi auto-discovers resources from these directori
 - `skills/` recursively finds `SKILL.md` folders and loads top-level `.md` files as skills
 - `prompts/` loads `.md` files
 - `themes/` loads `.json` files
+- `agents/` loads `.md` files as agent definitions for extensions that consume package agents
 
 ## Dependencies
 
@@ -195,7 +197,8 @@ Filter what a package loads using the object form in settings:
       "extensions": ["extensions/*.ts", "!extensions/legacy.ts"],
       "skills": [],
       "prompts": ["prompts/review.md"],
-      "themes": ["+themes/legacy.json"]
+      "themes": ["+themes/legacy.json"],
+      "agents": ["agents/reviewer.md"]
     }
   ]
 }
@@ -212,7 +215,7 @@ Filter what a package loads using the object form in settings:
 
 ## Enable and Disable Resources
 
-Use `pi config` to enable or disable extensions, skills, prompt templates, and themes from installed packages and local directories. Works for both global (`~/.pi/agent`) and project (`.pi/`) scopes.
+Use `pi config` to enable or disable extensions, skills, prompt templates, themes, and agents from installed packages and local directories. Works for both global (`~/.pi/agent`) and project (`.pi/`) scopes.
 
 ## Scope and Deduplication
 

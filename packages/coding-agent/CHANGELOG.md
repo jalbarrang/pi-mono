@@ -233,6 +233,7 @@
 - Added configurable keybinding ids for scoped model selector actions and tree filter actions, so those interactive shortcuts can be remapped in `keybindings.json` ([#3343](https://github.com/badlogic/pi-mono/pull/3343) by [@mpazik](https://github.com/mpazik))
 - Added `PI_OAUTH_CALLBACK_HOST` support for built-in OAuth login flows, allowing local callback servers used by `pi auth` to bind to a custom interface instead of hardcoded `127.0.0.1` ([#3409](https://github.com/badlogic/pi-mono/pull/3409) by [@Michaelliv](https://github.com/Michaelliv))
 - Added `reason` and `targetSessionFile` metadata to `session_shutdown` extension events, so extensions can distinguish quit, reload, new-session, resume, and fork teardown paths ([#2863](https://github.com/badlogic/pi-mono/issues/2863))
+- Added package and settings support for `agents`, so pi packages can ship agent definitions via `pi.agents` or conventional `agents/` directories and toggle them in `pi config`.
 
 ### Changed
 
@@ -265,7 +266,6 @@
 - Fixed direct Bedrock sessions to honor `model.baseUrl` as the runtime client endpoint, restoring support for custom Bedrock VPC or proxy routes ([#3402](https://github.com/badlogic/pi-mono/pull/3402) by [@wirjo](https://github.com/wirjo))
 - Fixed the `edit` tool to coerce stringified `edits` JSON before validation, so models that send the array payload as a JSON string no longer fall back to ad-hoc shell edits ([#3370](https://github.com/badlogic/pi-mono/pull/3370) by [@dannote](https://github.com/dannote))
 - Fixed package manifest positive glob entries to expand before loading packaged resources, restoring manifest patterns such as `skills/**/*.md` ([#3350](https://github.com/badlogic/pi-mono/pull/3350) by [@neonspectra](https://github.com/neonspectra))
-
 ## [0.67.68] - 2026-04-17
 
 ## [0.67.67] - 2026-04-17
