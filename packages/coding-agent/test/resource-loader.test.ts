@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { ExtensionRunner } from "../src/core/extensions/runner.js";
@@ -10,6 +10,7 @@ import { SessionManager } from "../src/core/session-manager.js";
 import { SettingsManager } from "../src/core/settings-manager.js";
 import type { Skill } from "../src/core/skills.js";
 import { createSyntheticSourceInfo } from "../src/core/source-info.js";
+import { createWorkspaceResourceLoaderOverrides, WorkspaceController } from "../src/core/workspaces.js";
 
 describe("DefaultResourceLoader", () => {
 	let tempDir: string;
@@ -419,6 +420,55 @@ Content`,
 
 			const { skills } = loader.getSkills();
 			expect(skills.some((s) => s.name === "custom")).toBe(true);
+		});
+	});
+
+	describe("workspace overrides", () => {
+		it("appends workspace preamble and attached-folder context files", async () => {
+			writeFileSync(join(cwd, "AGENTS.md"), "# Primary Context\n");
+			const attachedDir = join(tempDir, "attached", "run-sdk");
+			mkdirSync(attachedDir, { recursive: true });
+			writeFileSync(join(attachedDir, "AGENTS.md"), "# Attached Context\n");
+			const attachedContextPath = join(realpathSync(attachedDir), "AGENTS.md");
+
+			const workspaceController = new WorkspaceController({ workspacesDir: join(tempDir, "workspaces") });
+			workspaceController.create("rundot", cwd);
+			workspaceController.addFolder(attachedDir);
+
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				...createWorkspaceResourceLoaderOverrides(workspaceController),
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt().join("\n\n")).toContain("Workspace: rundot");
+			expect(loader.getAppendSystemPrompt().join("\n\n")).toContain(`${basename(cwd)} (primary)`);
+			expect(loader.getAppendSystemPrompt().join("\n\n")).toContain("run-sdk");
+			expect(loader.getAgentsFiles().agentsFiles.map((file) => file.path)).toContain(
+				`Context: run-sdk — ${attachedContextPath}`,
+			);
+		});
+
+		it("skips attached-folder context files when workspace context injection is disabled", async () => {
+			const attachedDir = join(tempDir, "attached", "run-sdk");
+			mkdirSync(attachedDir, { recursive: true });
+			writeFileSync(join(attachedDir, "AGENTS.md"), "# Attached Context\n");
+
+			const workspaceController = new WorkspaceController({ workspacesDir: join(tempDir, "workspaces") });
+			workspaceController.create("rundot", cwd);
+			workspaceController.addFolder(attachedDir);
+
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				noContextFiles: true,
+				...createWorkspaceResourceLoaderOverrides(workspaceController, { includeContextFiles: false }),
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt().join("\n\n")).toContain("Workspace: rundot");
+			expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
 		});
 	});
 

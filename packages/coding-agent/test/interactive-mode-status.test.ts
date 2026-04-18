@@ -1,8 +1,11 @@
-import { homedir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
+import { join } from "node:path";
 import { Container } from "@mariozechner/pi-tui";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import type { SourceInfo } from "../src/core/source-info.js";
+import { WorkspaceController } from "../src/core/workspaces.js";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 
@@ -144,6 +147,106 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 		expect(result.success).toBe(false);
 		expect(settingsManager.setTheme).not.toHaveBeenCalled();
 		expect(fakeThis.ui.requestRender).not.toHaveBeenCalled();
+	});
+});
+
+describe("InteractiveMode.handleWorkspaceCommand", () => {
+	const tempDirs: string[] = [];
+
+	beforeAll(() => {
+		initTheme("dark");
+	});
+
+	afterEach(() => {
+		while (tempDirs.length > 0) {
+			const dir = tempDirs.pop();
+			if (dir) {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		}
+	});
+
+	function createWorkspaceThis(workspacesDir: string, cwd: string) {
+		const fakeThis: any = {
+			chatContainer: new Container(),
+			ui: { requestRender: vi.fn() },
+			lastStatusSpacer: undefined,
+			lastStatusText: undefined,
+			workspaceController: new WorkspaceController({ workspacesDir }),
+			footerDataProvider: {
+				setExtensionStatus: vi.fn(),
+			},
+			session: {
+				isStreaming: false,
+				isCompacting: false,
+				reload: vi.fn(),
+			},
+			sessionManager: {
+				getCwd: () => cwd,
+			},
+			runtimeHost: {
+				switchToCwdSession: vi.fn(async () => ({ cancelled: false })),
+			},
+			handleRuntimeSessionChange: vi.fn(async () => {}),
+			renderCurrentSessionState: vi.fn(),
+			setupAutocomplete: vi.fn(),
+			fdPath: undefined,
+			footer: { invalidate: vi.fn() },
+		};
+		// Wire showStatus and showWarning/showError through the real prototype
+		fakeThis.showStatus = (msg: string) => (InteractiveMode as any).prototype.showStatus.call(fakeThis, msg);
+		fakeThis.showWarning = (msg: string) => (InteractiveMode as any).prototype.showWarning.call(fakeThis, msg);
+		fakeThis.showError = (msg: string) => (InteractiveMode as any).prototype.showError.call(fakeThis, msg);
+		fakeThis.updateWorkspaceStatus = () => (InteractiveMode as any).prototype.updateWorkspaceStatus.call(fakeThis);
+		fakeThis.applyWorkspaceChange = async (primaryPath: string) =>
+			(InteractiveMode as any).prototype.applyWorkspaceChange.call(fakeThis, primaryPath);
+		return fakeThis;
+	}
+
+	test("/workspace list with no workspaces shows informational message", async () => {
+		const tempDir = join(tmpdir(), `pi-ws-interactive-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDirs.push(tempDir);
+		const workspacesDir = join(tempDir, "workspaces");
+		const cwd = join(tempDir, "project");
+		mkdirSync(cwd, { recursive: true });
+
+		const fakeThis = createWorkspaceThis(workspacesDir, cwd);
+		await (InteractiveMode as any).prototype.handleWorkspaceCommand.call(fakeThis, "/workspace list");
+
+		const output = renderAll(fakeThis.chatContainer);
+		expect(output).toContain("No saved workspaces");
+	});
+
+	test("/workspace new creates workspace and updates footer status", async () => {
+		const tempDir = join(tmpdir(), `pi-ws-interactive-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDirs.push(tempDir);
+		const workspacesDir = join(tempDir, "workspaces");
+		const cwd = join(tempDir, "project");
+		mkdirSync(cwd, { recursive: true });
+
+		const fakeThis = createWorkspaceThis(workspacesDir, cwd);
+		await (InteractiveMode as any).prototype.handleWorkspaceCommand.call(fakeThis, "/workspace new myws");
+
+		expect(fakeThis.workspaceController.getActive()?.name).toBe("myws");
+		expect(fakeThis.footerDataProvider.setExtensionStatus).toHaveBeenCalledWith(
+			"workspace",
+			expect.stringContaining("ws:myws"),
+		);
+	});
+
+	test("/workspace close clears active workspace and footer status", async () => {
+		const tempDir = join(tmpdir(), `pi-ws-interactive-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDirs.push(tempDir);
+		const workspacesDir = join(tempDir, "workspaces");
+		const cwd = join(tempDir, "project");
+		mkdirSync(cwd, { recursive: true });
+
+		const fakeThis = createWorkspaceThis(workspacesDir, cwd);
+		await (InteractiveMode as any).prototype.handleWorkspaceCommand.call(fakeThis, "/workspace new myws");
+		await (InteractiveMode as any).prototype.handleWorkspaceCommand.call(fakeThis, "/workspace close");
+
+		expect(fakeThis.workspaceController.getActive()).toBeUndefined();
+		expect(fakeThis.footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("workspace", undefined);
 	});
 });
 

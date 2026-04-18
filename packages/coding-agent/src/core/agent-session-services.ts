@@ -10,6 +10,7 @@ import { type CreateAgentSessionResult, createAgentSession } from "./sdk.js";
 import type { SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
 import type { Tool } from "./tools/index.js";
+import type { WorkspaceController } from "./workspaces.js";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -55,6 +56,7 @@ export interface CreateAgentSessionFromServicesOptions {
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	tools?: Tool[];
 	customTools?: ToolDefinition[];
+	workspaceController?: WorkspaceController;
 }
 
 /**
@@ -192,6 +194,7 @@ export async function createAgentSessionFromServices(
 		scopedModels: options.scopedModels,
 		tools: options.tools,
 		customTools: options.customTools,
+		workspaceController: options.workspaceController,
 		sessionStartEvent: options.sessionStartEvent,
 	});
 }
