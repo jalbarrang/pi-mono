@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { formatWorkspaceStatusLine, WorkspaceController } from "../src/core/workspaces.js";
+import { formatWorkspacePreamble, formatWorkspaceStatusLine, WorkspaceController } from "../src/core/workspaces.js";
 
 describe("WorkspaceController", () => {
 	const tempDirs: string[] = [];
@@ -62,6 +62,25 @@ describe("WorkspaceController", () => {
 		expect(() => controller.addFolder(folder)).toThrowError(
 			"No workspace loaded. Use `/workspace new <name>` first.",
 		);
+	});
+
+	it("formats workspace preamble with attached folder file tag guidance", () => {
+		const tempDir = join(tmpdir(), `pi-workspaces-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDirs.push(tempDir);
+		const workspacesDir = join(tempDir, "workspaces");
+		const appDir = join(tempDir, "repos", "run-platform");
+		const sdkDir = join(tempDir, "repos", "run-sdk");
+		mkdirSync(appDir, { recursive: true });
+		mkdirSync(sdkDir, { recursive: true });
+
+		const controller = new WorkspaceController({ workspacesDir });
+		controller.create("rundot", appDir);
+		controller.addFolder(sdkDir);
+
+		const preamble = formatWorkspacePreamble(controller.getActive()!);
+		expect(preamble).toContain("`@folder-name:src/index.ts`");
+		expect(preamble).toContain('`folder: "folder-name"`');
+		expect(preamble).toContain("path after the colon");
 	});
 
 	it("formats a footer status line with primary marker", () => {

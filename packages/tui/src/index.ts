@@ -6,6 +6,7 @@ export {
 	type AutocompleteProvider,
 	type AutocompleteSuggestions,
 	CombinedAutocompleteProvider,
+	type NamedAutocompleteRoot,
 	type SlashCommand,
 } from "./autocomplete.js";
 // Components

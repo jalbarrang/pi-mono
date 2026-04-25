@@ -154,6 +154,9 @@ export function formatWorkspacePreamble(activeWorkspace: ActiveWorkspace): strin
 				: `  ${folder.basename} — ${folder.path}`,
 		),
 		"",
+		"File tags without a workspace folder prefix (for example `@src/index.ts`) refer to the primary folder.",
+		"File tags with a workspace folder prefix (for example `@folder-name:src/index.ts`) refer to that attached workspace folder.",
+		'When reading a prefixed file tag, call built-in file tools with `folder: "folder-name"` and the path after the colon.',
 		"Built-in file tools accept an optional `folder` parameter. Omitting it targets the primary folder.",
 		"Prefer writing to the primary folder. If the user explicitly asks you to modify files in another folder, you may do so.",
 	];

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added workspace-aware `@folder:path` file tag autocomplete for files in attached workspace folders.
+
 ## [0.70.2] - 2026-04-24
 
 ### Fixed

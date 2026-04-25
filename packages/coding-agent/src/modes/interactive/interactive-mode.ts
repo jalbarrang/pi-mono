@@ -524,10 +524,16 @@ export class InteractiveMode {
 			}
 		}
 
+		const workspaceAutocompleteRoots =
+			this.workspaceController
+				?.getActive()
+				?.attachedFolders.map((folder) => ({ name: folder.basename, basePath: folder.path })) ?? [];
+
 		return new CombinedAutocompleteProvider(
 			[...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList],
 			this.sessionManager.getCwd(),
 			this.fdPath,
+			workspaceAutocompleteRoots,
 		);
 	}
 
@@ -5555,6 +5561,7 @@ export class InteractiveMode {
 			this.footerDataProvider.setExtensionStatus("workspace", undefined);
 		}
 		this.footer.invalidate();
+		this.setupAutocompleteProvider();
 		this.ui.requestRender();
 	}
 

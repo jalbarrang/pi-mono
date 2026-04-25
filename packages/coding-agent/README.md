@@ -148,7 +148,7 @@ The editor can be temporarily replaced by other UI, like built-in `/settings` or
 
 | Feature | How |
 |---------|-----|
-| File reference | Type `@` to fuzzy-search project files |
+| File reference | Type `@` to fuzzy-search project files; in workspaces, use `@folder-name:` to search attached folders |
 | Path completion | Tab to complete paths |
 | Multi-line | Shift+Enter (or Ctrl+Enter on Windows Terminal) |
 | Images | Ctrl+V to paste (Alt+V on Windows), or drag onto terminal |
