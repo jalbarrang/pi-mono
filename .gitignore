@@ -45,3 +45,4 @@ collect.sh
 .handoff/
 .issues/
 plans/
+.dex/

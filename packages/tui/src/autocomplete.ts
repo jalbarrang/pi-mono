@@ -238,6 +238,11 @@ export interface AutocompleteSuggestions {
 	prefix: string; // What we're matching against (e.g., "/" or "src/")
 }
 
+export interface NamedAutocompleteRoot {
+	name: string;
+	basePath: string;
+}
+
 export interface AutocompleteProvider {
 	// Get autocomplete suggestions for current text/cursor position
 	// Returns null if no suggestions available
@@ -271,11 +276,18 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	private commands: (SlashCommand | AutocompleteItem)[];
 	private basePath: string;
 	private fdPath: string | null;
+	private namedRoots: NamedAutocompleteRoot[];
 
-	constructor(commands: (SlashCommand | AutocompleteItem)[] = [], basePath: string, fdPath: string | null = null) {
+	constructor(
+		commands: (SlashCommand | AutocompleteItem)[] = [],
+		basePath: string,
+		fdPath: string | null = null,
+		namedRoots: NamedAutocompleteRoot[] = [],
+	) {
 		this.commands = commands;
 		this.basePath = basePath;
 		this.fdPath = fdPath;
+		this.namedRoots = namedRoots;
 	}
 
 	async getSuggestions(
@@ -515,6 +527,42 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return path;
 	}
 
+	private resolveNamedRootFuzzyQuery(
+		rawQuery: string,
+	): { baseDir: string; query: string; displayBase: string } | null {
+		const normalizedQuery = toDisplayPath(rawQuery);
+		const colonIndex = normalizedQuery.indexOf(":");
+		if (colonIndex === -1) {
+			return null;
+		}
+
+		const rootName = normalizedQuery.slice(0, colonIndex);
+		const root = this.namedRoots.find((entry) => entry.name === rootName);
+		if (!root) {
+			return null;
+		}
+
+		const rootQuery = normalizedQuery.slice(colonIndex + 1);
+		const slashIndex = rootQuery.lastIndexOf("/");
+		if (slashIndex === -1) {
+			return { baseDir: root.basePath, query: rootQuery, displayBase: `${rootName}:` };
+		}
+
+		const relativeBase = rootQuery.slice(0, slashIndex + 1);
+		const query = rootQuery.slice(slashIndex + 1);
+		const baseDir = join(root.basePath, relativeBase);
+
+		try {
+			if (!statSync(baseDir).isDirectory()) {
+				return null;
+			}
+		} catch {
+			return null;
+		}
+
+		return { baseDir, query, displayBase: `${rootName}:${relativeBase}` };
+	}
+
 	private resolveScopedFuzzyQuery(rawQuery: string): { baseDir: string; query: string; displayBase: string } | null {
 		const normalizedQuery = toDisplayPath(rawQuery);
 		const slashIndex = normalizedQuery.lastIndexOf("/");
@@ -723,7 +771,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		try {
-			const scopedQuery = this.resolveScopedFuzzyQuery(query);
+			const scopedQuery = this.resolveNamedRootFuzzyQuery(query) ?? this.resolveScopedFuzzyQuery(query);
 			const fdBaseDir = scopedQuery?.baseDir ?? this.basePath;
 			const fdQuery = scopedQuery?.query ?? query;
 			const entries = await walkDirectoryWithFd(fdBaseDir, this.fdPath, fdQuery, 100, options.signal);

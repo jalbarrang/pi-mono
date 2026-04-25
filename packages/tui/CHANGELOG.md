@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added named roots for `@` file autocomplete providers, allowing consumers to offer scoped file tags such as `@folder:path`.
+
 ## [0.70.6] - 2026-04-28
 
 ## [0.70.5] - 2026-04-27

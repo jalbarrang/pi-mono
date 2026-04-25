@@ -147,6 +147,76 @@ describe("CombinedAutocompleteProvider", () => {
 			assert.deepStrictEqual(values, ["@README.md", "@src/"].sort());
 		});
 
+		test("scopes @ folder-name colon queries to named roots", async () => {
+			const attachedDir = join(rootDir, "run-sdk");
+			mkdirSync(attachedDir, { recursive: true });
+			setupFolder(baseDir, {
+				files: {
+					"primary-only.ts": "export {};",
+				},
+			});
+			setupFolder(attachedDir, {
+				files: {
+					"src/sdk.ts": "export {};",
+					"docs/Guide.md": "guide",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir, requireFdPath(), [
+				{ name: "run-sdk", basePath: attachedDir },
+			]);
+			const line = "@run-sdk:sdk";
+			const result = await getSuggestions(provider, [line], 0, line.length);
+
+			const values = result?.items.map((item) => item.value) ?? [];
+			assert.ok(values.includes("@run-sdk:src/sdk.ts"));
+			assert.ok(!values.includes("@primary-only.ts"));
+		});
+
+		test("keeps unqualified @ queries scoped to the primary base path with named roots", async () => {
+			const attachedDir = join(rootDir, "run-sdk");
+			mkdirSync(attachedDir, { recursive: true });
+			setupFolder(baseDir, {
+				files: {
+					"README.md": "readme",
+				},
+			});
+			setupFolder(attachedDir, {
+				files: {
+					"attached.md": "attached",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir, requireFdPath(), [
+				{ name: "run-sdk", basePath: attachedDir },
+			]);
+			const line = "@";
+			const result = await getSuggestions(provider, [line], 0, line.length);
+
+			const values = result?.items.map((item) => item.value) ?? [];
+			assert.ok(values.includes("@README.md"));
+			assert.ok(!values.includes("@attached.md"));
+		});
+
+		test("quotes named-root @ suggestions with spaces using existing quoted tag behavior", async () => {
+			const attachedDir = join(rootDir, "run-sdk");
+			mkdirSync(attachedDir, { recursive: true });
+			setupFolder(attachedDir, {
+				files: {
+					"docs/My File.md": "content",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir, requireFdPath(), [
+				{ name: "run-sdk", basePath: attachedDir },
+			]);
+			const line = "@run-sdk:my";
+			const result = await getSuggestions(provider, [line], 0, line.length);
+
+			const values = result?.items.map((item) => item.value) ?? [];
+			assert.ok(values.includes('@"run-sdk:docs/My File.md"'));
+		});
+
 		test("matches file with extension in query", async () => {
 			setupFolder(baseDir, {
 				files: {
