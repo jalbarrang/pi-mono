@@ -85,6 +85,86 @@ function getBedrockBaseUrl(modelId: string): string {
 		: "https://bedrock-runtime.us-east-1.amazonaws.com";
 }
 
+const MODELS_DEV_FETCH_RETRY_ATTEMPTS = 4;
+const MODELS_DEV_FETCH_TIMEOUT_MS = 15000;
+const MODELS_DEV_FETCH_BASE_DELAY_MS = 500;
+const MODELS_DEV_FETCH_MAX_JITTER_MS = 250;
+const MODELS_DEV_RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const MODELS_DEV_RETRYABLE_ERROR_CODES = new Set([
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"ECONNABORTED",
+	"ENOTFOUND",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+]);
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getModelsDevRetryDelayMs(attempt: number): number {
+	const jitter = Math.floor(Math.random() * MODELS_DEV_FETCH_MAX_JITTER_MS);
+	return MODELS_DEV_FETCH_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1) + jitter;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+	if (!(error instanceof Error)) return undefined;
+	const errorWithCode = error as Error & { code?: unknown; cause?: unknown };
+	if (typeof errorWithCode.code === "string") {
+		return errorWithCode.code;
+	}
+	return getErrorCode(errorWithCode.cause);
+}
+
+function isModelsDevRetryableError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	if (error.name === "AbortError" || error.name === "TimeoutError") {
+		return true;
+	}
+	const code = getErrorCode(error);
+	return code !== undefined && MODELS_DEV_RETRYABLE_ERROR_CODES.has(code);
+}
+
+async function fetchModelsDevJsonWithRetry<T>(url: string): Promise<T> {
+	for (let attempt = 1; attempt <= MODELS_DEV_FETCH_RETRY_ATTEMPTS; attempt += 1) {
+		try {
+			const response = await fetch(url, {
+				signal: AbortSignal.timeout(MODELS_DEV_FETCH_TIMEOUT_MS),
+			});
+
+			if (!response.ok) {
+				const message = `models.dev request failed with HTTP ${response.status} ${response.statusText}`;
+				if (
+					MODELS_DEV_RETRYABLE_STATUS_CODES.has(response.status) &&
+					attempt < MODELS_DEV_FETCH_RETRY_ATTEMPTS
+				) {
+					const delayMs = getModelsDevRetryDelayMs(attempt);
+					console.warn(`${message}; retrying in ${delayMs}ms (${attempt}/${MODELS_DEV_FETCH_RETRY_ATTEMPTS})`);
+					await sleep(delayMs);
+					continue;
+				}
+				throw new Error(message);
+			}
+
+			return (await response.json()) as T;
+		} catch (error) {
+			if (isModelsDevRetryableError(error) && attempt < MODELS_DEV_FETCH_RETRY_ATTEMPTS) {
+				const delayMs = getModelsDevRetryDelayMs(attempt);
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn(
+					`models.dev request failed (${message}); retrying in ${delayMs}ms (${attempt}/${MODELS_DEV_FETCH_RETRY_ATTEMPTS})`,
+				);
+				await sleep(delayMs);
+				continue;
+			}
+			throw error;
+		}
+	}
+
+	throw new Error("models.dev request exhausted retries");
+}
+
 async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from OpenRouter API...");
@@ -204,8 +284,9 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 async function loadModelsDevData(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from models.dev API...");
-		const response = await fetch("https://models.dev/api.json");
-		const data = await response.json();
+		const data = await fetchModelsDevJsonWithRetry<Record<string, { models?: Record<string, unknown> }>>(
+			"https://models.dev/api.json",
+		);
 
 		const models: Model<any>[] = [];
 
